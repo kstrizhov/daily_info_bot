@@ -1,0 +1,18 @@
+[tool.poetry]
+name = "morning-briefing-bot"
+version = "0.1.0"
+description = "Telegram bot that sends a daily morning briefing with market and weather data."
+authors = []
+readme = "README.md"
+packages = [{ include = "morning_briefing_bot", from = "src" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+python-dotenv = "^1.1.0"
+python-telegram-bot = { version = "^22.7", extras = ["job-queue"] }
+httpx = "^0.28.0"
+matplotlib = "^3.10.0"
+
+[build-system]
+requires = ["poetry-core>=1.9.0"]
+build-backend = "poetry.core.masonry.api"
