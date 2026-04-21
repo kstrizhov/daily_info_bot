@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import date, datetime, timedelta
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -46,9 +47,7 @@ class WeatherService:
         )
 
     async def detail(self, period_label: str) -> MetricDetail:
-        days = _period_to_days(period_label)
-        end_day = date.today()
-        start_day = end_day - timedelta(days=days)
+        start_day, end_day = _archive_date_range(period_label, self.settings.timezone)
 
         params = {
             "latitude": self.settings.latitude,
@@ -61,7 +60,7 @@ class WeatherService:
 
         async with httpx.AsyncClient(timeout=20.0) as client:
             response = await client.get(self.ARCHIVE_URL, params=params)
-            response.raise_for_status()
+            _raise_for_open_meteo_error(response)
             payload = response.json()
 
         days_list = payload["daily"]["time"]
@@ -71,6 +70,10 @@ class WeatherService:
             for day_text, value in zip(days_list, values, strict=False)
             if value is not None
         ]
+        if not points:
+            raise ValueError(
+                f"No Open-Meteo weather history returned for {start_day} through {end_day}."
+            )
         latest = points[-1]
 
         return MetricDetail(
@@ -88,3 +91,36 @@ class WeatherService:
 def _period_to_days(period_label: str) -> int:
     mapping = {"1M": 30, "3M": 90, "1Y": 365}
     return mapping.get(period_label, 30)
+
+
+def _archive_date_range(period_label: str, timezone_name: str) -> tuple[date, date]:
+    days = _period_to_days(period_label)
+    today = datetime.now(ZoneInfo(timezone_name)).date()
+    end_day = today - timedelta(days=1)
+    start_day = end_day - timedelta(days=days)
+    return start_day, end_day
+
+
+def _raise_for_open_meteo_error(response: httpx.Response) -> None:
+    if response.is_success:
+        return
+
+    raise RuntimeError(
+        f"Open-Meteo request failed with HTTP {response.status_code}: "
+        f"{_response_error_detail(response)}"
+    ) from None
+
+
+def _response_error_detail(response: httpx.Response) -> str:
+    try:
+        payload = response.json()
+    except ValueError:
+        return response.text[:300]
+
+    message = (
+        payload.get("reason")
+        or payload.get("message")
+        or payload.get("error")
+        or response.text
+    )
+    return str(message)[:300]
